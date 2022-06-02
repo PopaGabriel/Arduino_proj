@@ -19,7 +19,9 @@ const int servoPin1 = 8;
 const int servoPin2 = 9;
 
 // Initial state for the button
-int buttonState = 0;
+int currentState = 0;
+int lastSteadyState = 0;      // the previous steady state from the input pin
+int lastFlickerableState = 0; // the previous flickerable state from the input pin
 
 // variable for water
 bool water_present = 1;
@@ -30,10 +32,10 @@ Servo Servo_curtain;
 
 void setup()
 {
-  Serial.begin(9600);
-
+  Wire.begin();
   pinMode(lightPin, INPUT);
   pinMode(buttonPin, INPUT);
+  Serial.begin(9600);
 
   Servo_water.attach(servoPin1);
   Servo_water.write(90);
@@ -43,6 +45,25 @@ void setup()
 
   lcd.init();
   lcd.backlight();
+}
+
+void writeI2CRegister8bit(int addr, int value)
+{
+  Wire.beginTransmission(addr);
+  Wire.write(value);
+  Wire.endTransmission();
+}
+
+unsigned int readI2CRegister16bit(int addr, int reg)
+{
+  Wire.beginTransmission(addr);
+  Wire.write(reg);
+  Wire.endTransmission();
+  delay(1100);
+  Wire.requestFrom(addr, 2);
+  unsigned int t = Wire.read() << 8;
+  t = t | Wire.read();
+  return t;
 }
 
 // checks temperature and moves the servo
@@ -62,7 +83,7 @@ void check_humidity(int humidity)
 // Checks the light and moves the servos
 void check_light(int light)
 {
-  if (light == HIGH)
+  if (light == LOW)
   {
     Servo_curtain.write(90);
   }
@@ -87,23 +108,42 @@ void print_lcd(int light)
 {
   lcd.setCursor(0, 0);
   lcd.print("Intensity  ");
-  if (light == HIGH)
+  if (light == LOW)
     lcd.print(HIGH);
   else
     lcd.print(LOW);
+
+  lcd.setCursor(0, 1);
+  lcd.print("Humidity  ");
+  // The senzor not work :(
+  lcd.print(LOW);
 }
 
 // Checks button state
 void check_button()
 {
-  buttonState = digitalRead(buttonPin);
+  currentState = digitalRead(buttonPin);
+
+  // If the switch/button changed, due to noise or pressing:
+  if (currentState != lastFlickerableState)
+  {
+    // reset the debouncing timer
+    lastDebounceTime = millis();
+    // save the the last flickerable state
+    lastFlickerableState = currentState;
+  }
+
   if ((millis() - last_debounce) > debounce_delay)
   {
-    if (buttonState == HIGH && water_present)
+    if (currentState == HIGH && water_present == 1 && lastSteadyState == HIGH && currentState == LOW)
     {
       water_present = 0;
       Servo_water.write(0);
       delay(300);
+    }
+    else if (lastSteadyState == LOW && currentState == HIGH)
+    {
+      Servo_water.write(90);
     }
   }
 }
@@ -111,5 +151,6 @@ void check_button()
 void loop()
 {
   solve_problem_water_light();
+  Serial.print(readI2CRegister16bit(0x20, 0));
   check_button();
 }
