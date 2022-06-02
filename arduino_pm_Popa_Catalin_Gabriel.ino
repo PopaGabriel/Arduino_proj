@@ -22,7 +22,7 @@ const int servoPin2 = 9;
 int currentState = 0;
 int lastSteadyState = 0;      // the previous steady state from the input pin
 int lastFlickerableState = 0; // the previous flickerable state from the input pin
-
+int lastDebounceTime = 0;
 // variable for water
 bool water_present = 1;
 
@@ -123,7 +123,7 @@ void print_lcd(int light)
 void check_button()
 {
   currentState = digitalRead(buttonPin);
-
+  Serial.println(currentState);
   // If the switch/button changed, due to noise or pressing:
   if (currentState != lastFlickerableState)
   {
@@ -131,26 +131,29 @@ void check_button()
     lastDebounceTime = millis();
     // save the the last flickerable state
     lastFlickerableState = currentState;
+    // Serial.println(lastFlickerableState);
   }
 
   if ((millis() - last_debounce) > debounce_delay)
   {
-    if (currentState == HIGH && water_present == 1 && lastSteadyState == HIGH && currentState == LOW)
+    if (lastSteadyState == HIGH && currentState == LOW && water_present)
     {
       water_present = 0;
       Servo_water.write(0);
-      delay(300);
+      delay(1000);
     }
     else if (lastSteadyState == LOW && currentState == HIGH)
     {
       Servo_water.write(90);
+      delay(1000);
     }
+    lastSteadyState = currentState;
   }
 }
 
 void loop()
 {
   solve_problem_water_light();
-  Serial.print(readI2CRegister16bit(0x20, 0));
+  // Serial.print(readI2CRegister16bit(0x20, 0));
   check_button();
 }
